@@ -19,7 +19,7 @@ For cPanel's Technical Support Team. Standard cPanel, L.L.C. Copyright applies -
 In development. Please report any problems/issues or improvements you have.
 
 
-## Example Output
+```
 # ./secheaders domainname.tld
 Version: 1.0.0
 
@@ -105,3 +105,5 @@ Cross-Origin-Embedder-Policy - [MISSING]
 Cross-Origin-Opener-Policy - [MISSING]
 Cross-Origin-Resource-Policy - [MISSING]
 ========================================================================
+```
+
