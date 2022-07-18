@@ -1,0 +1,136 @@
+#!/usr/local/cpanel/3rdparty/bin/perl
+
+use strict;
+my $version="1.0.0";
+
+use Cpanel::SafeRun::Timed  ();
+use Term::ANSIColor qw(:constants);
+use List::MoreUtils qw(uniq);
+$Term::ANSIColor::AUTORESET = 1;
+
+my $domain = @ARGV[0];
+chomp($domain);
+
+my @required_headers = qw( Strict-Transport-Security X-Frame-Options X-Content-Type-Options Referrer-Policy Permissions-Policy Content-Security-Policy );
+my @additional_headers = qw( Access-Control-Allow-Origin Access-Control-Allow-Methods x-xss-protection );
+my @experimental_headers = qw( Expect-CT Cross-Origin-Embedder-Policy Cross-Origin-Opener-Policy Cross-Origin-Resource-Policy );
+my $headers = Cpanel::SafeRun::Timed::timedsaferun( 5, 'curl', '-s', '-A', "Firefox", '-L', '--head', "https://${domain}/" );
+my @headers = split ( /\n/, $headers );
+my @unique = uniq @headers;
+@headers = @unique;
+
+my $httphead = "";
+my $server = "";
+my $date = "";
+
+foreach my $line( @headers ) {
+    $date = $line if( $line =~ m/Date:/i );
+    $httphead = $line if( $line =~ m/HTTP/ );
+    $server = $line if( $line =~ m/Server:/i );
+}
+
+print "Version: $version\n\n";
+
+if( ! $server and ! $date and ! $httphead ) {
+    print "Failed to retrieve header data for $domain\n";
+    exit;
+}
+
+print "$httphead\n" unless( $httphead eq "" );
+print "$server\n" unless( $server eq "" );
+print "$date\n" unless( $date eq "" );
+
+print "\nRecommended Headers\n";
+print "========================================================================\n";
+foreach my $req (@required_headers) {
+    chomp($req);
+    if ( grep { /$req/i } @headers ) {
+        print "$req - " . GREEN "[GOOD]\n";
+        foreach my $head( @headers ) {
+            next unless( $head =~ m/$req/i );
+            print CYAN "\t\\_ $head\n";
+        }
+    }
+    else {
+        print "$req - " . RED "[MISSING]\n";
+        # Strict-Transport-Security
+        if ( $server =~ m/apache/i ) {
+            print WHITE "\t\\_ Add the following line to the httpd.conf file:" . YELLOW "\n\t\\_ Header set Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"\n" if ( $req =~ m{Strict-Transport-Security} );;
+        }
+        elsif ( $server =~ m/nginx/i ) {
+            print WHITE "\t\\_ Add the following to the nginx.conf file:" . YELLOW "\n\t\\_ add_header Strict-Transport-Security 'max-age=31536000; includeSubDomains; preload';\"\n" if ( $req =~ m{Strict-Transport-Security}i );;
+        }
+        # X-Frame-Options
+        if ( $server =~ m/apache/i ) {
+            print WHITE "\t\\_ Add the following line to the httpd.conf file:" . YELLOW "\n\t\\_ Header always append X-Frame-Options DENY\n" if ( $req =~ m{X-Frame-Options}i );;
+        }
+        elsif ( $server =~ m/nginx/i ) {
+            print WHITE "\t\\_ Add the following to the nginx.conf file:" . YELLOW "\n\t\\_ add_header X-Frame-Options \"DENY\";\n" if ( $req =~ m{X-Frame-Options} );;
+        }
+        # X-Content-Type-Options
+        if ( $server =~ m/apache/i ) {
+            print WHITE "\t\\_ Add the following line to the httpd.conf file:" . YELLOW "\n\t\\_ Header set X-Content-Type-Options nosniff\n" if ( $req =~ m{X-Content-Type-Options}i );;
+        }
+        elsif ( $server =~ m/nginx/i ) {
+            print WHITE "\t\\_ Add the following to the nginx.conf file:" . YELLOW "\n\t\\_ add_header X-Content-Type-Options nosniff;\n" if ( $req =~ m{X-Content-Type-Options} );;
+        }
+        # Content-Security-Policy
+        if ( $server =~ m/apache/i ) {
+            print WHITE "\t\\_ Add the following line to the httpd.conf file:" . YELLOW "\n\t\\_ Header set Content-Security-Policy \"default-src 'self';\"\n" if ( $req =~ m{Content-Security-Policy}i );;
+        }
+        elsif ( $server =~ m/nginx/i ) {
+            print WHITE "\t\\_ Add the following to the nginx.conf file:" . YELLOW "\n\t\\_ add_header Content-Security-Policy \"default-src 'self';\";\n" if ( $req =~ m{Content-Security-Policy} );;
+        }
+        # Referrer-Policy
+        if ( $server =~ m/apache/i ) {
+            print WHITE "\t\\_ Add the following line to the httpd.conf file:" . YELLOW "\n\t\\_ Header set Referrer-Policy \"no-referrer\"\n" if ( $req =~ m{Referrer-Policy}i );;
+        }
+        elsif ( $server =~ m/nginx/i ) {
+            print WHITE "\t\\_ Add the following to the nginx.conf file:" . YELLOW "\n\t\\_ add_header Referrer-Policy \"no-referrer\";\n" if ( $req =~ m{Referrer-Policy} );;
+        }
+        # Permissions Policy
+        if ( $server =~ m/apache/i ) {
+            print WHITE "\t\\_ Add the following line to the httpd.conf file:" . YELLOW "\n\t\\_ Header always set Permissions-Policy \"fullscreen 'none' \"\n" if ( $req =~ m{Permissions-Policy}i );;
+        }
+        elsif ( $server =~ m/nginx/i ) {
+            print WHITE "\t\\_ Add the following to the nginx.conf file:" . YELLOW "\n\t\\_ add_header Permissions-Policy \"fullscreen 'none'\";\n" if ( $req =~ m{Permissions-Policy} );;
+        }
+    }
+}
+
+print "========================================================================\n";
+print MAGENTA "See https://support.cpanel.net/hc/en-us/articles/1500001533562 for additional information\n";
+print "\n";
+print "\nAdditional Headers\n";
+print "========================================================================\n";
+
+foreach my $add (@additional_headers) {
+    chomp($add);
+    if ( grep { /$add/i } @headers ) {
+        print "$add - " . GREEN "[GOOD]\n";
+        foreach my $head( @headers ) {
+            next unless( $head =~ m/$add/i );
+            print CYAN "\t\\_ $head\n";
+        }
+    }
+    else {
+        print "$add - " . YELLOW "[MISSING]\n";
+    }
+}
+
+print "========================================================================\n";
+print "Upcoming/Experimental Headers\n";
+print "========================================================================\n";
+
+foreach my $exp (@experimental_headers) {
+    chomp($exp);
+    if ( grep { /$exp/i } $headers ) {
+        print "$exp - " . GREEN "[GOOD]\n";
+    }
+    else {
+        print "$exp - " . YELLOW "[MISSING]\n";
+    }
+}
+
+print "========================================================================\n";
+
