@@ -1,20 +1,56 @@
 #!/usr/local/cpanel/3rdparty/bin/perl
 
 use strict;
-my $version="1.0.0";
+my $version="1.0.1";
 
+use Getopt::Long;
 use Cpanel::SafeRun::Timed  ();
 use Term::ANSIColor qw(:constants);
 use List::MoreUtils qw(uniq);
 $Term::ANSIColor::AUTORESET = 1;
 
+print "secheaders - Version: $version\n\n";
+
+my $help;
+
+GetOptions(
+    'help'    => \$help,
+);
+
+if ( $help ) {
+    print CYAN "Usage: secheaders domainname.tld\n";
+    print WHITE <<EOF;
+
+Security headers can address a number of cyber threats. Also known as security-related HTTP response headers,
+they modify the behavior of web browsers to avoid security vulnerabilities.
+
+When a user visits a site through his/her browser, the server responds with HTTP Response Headers.
+These headers tell the browser how to behave during communication with the site.
+
+You can use these headers to outline communication and improve web security.
+Inserting a security header can prevent a variety of hacking attempts.
+
+You can refer to the OWASP Secure Headers Project at https://owasp.org/www-project-secure-headers/
+for the top HTTP response headers that provide security and usability.
+
+EOF
+    exit;
+}
+
 my $domain = @ARGV[0];
 chomp($domain);
+
+# Check if cPanel is installed by checking for status code 200 on port 2083.
+my $chk_2083 = Cpanel::SafeRun::Timed::timedsaferun( 2, 'curl', '-w', '%{http_code}', '-o', '/dev/null', '-s', "https://${domain}:2083" );
+my $has_cpanel = ( $chk_2083 == 200 ) ? 1:0;
+
+# Retrieve headers
+print GREEN "Retrieving headers for https://$domain/ ...\n";
 
 my @required_headers = qw( Strict-Transport-Security X-Frame-Options X-Content-Type-Options Referrer-Policy Permissions-Policy Content-Security-Policy );
 my @additional_headers = qw( Access-Control-Allow-Origin Access-Control-Allow-Methods x-xss-protection );
 my @experimental_headers = qw( Expect-CT Cross-Origin-Embedder-Policy Cross-Origin-Opener-Policy Cross-Origin-Resource-Policy );
-my $headers = Cpanel::SafeRun::Timed::timedsaferun( 5, 'curl', '-s', '-A', "Firefox", '-L', '--head', "https://${domain}/" );
+my $headers = Cpanel::SafeRun::Timed::timedsaferun( 6, 'curl', '-s', '-A', "Firefox", '-L', '--head', "https://${domain}/" );
 my @headers = split ( /\n/, $headers );
 my @unique = uniq @headers;
 @headers = @unique;
@@ -29,14 +65,12 @@ foreach my $line( @headers ) {
     $server = $line if( $line =~ m/Server:/i );
 }
 
-print "Version: $version\n\n";
-
 if( ! $server and ! $date and ! $httphead ) {
     print "Failed to retrieve header data for $domain\n";
     exit;
 }
 
-print "$httphead\n" unless( $httphead eq "" );
+print "HTTP Status: $httphead\n" unless( $httphead eq "" );
 print "$server\n" unless( $server eq "" );
 print "$date\n" unless( $date eq "" );
 
@@ -99,7 +133,13 @@ foreach my $req (@required_headers) {
 }
 
 print "========================================================================\n";
-print MAGENTA "See https://support.cpanel.net/hc/en-us/articles/1500001533562 for additional information\n";
+if ( $has_cpanel ) {
+    print MAGENTA "See https://support.cpanel.net/hc/en-us/articles/1500001533562 for additional information\n";
+    print YELLOW "(above is specifically for servers running cPanel)\n";
+}
+else {
+    print MAGENTA "See https://crashtest-security.com/enable-security-headers/\n";
+}
 print "\n";
 print "\nAdditional Headers\n";
 print "========================================================================\n";
